@@ -17,7 +17,7 @@ class DiscordPath extends Model {
             let channel = await this.resolveChannel(client);
             if(!channel) return null;
 
-            return await client.guilds.fetch(this.guildId);
+            return await channel.messages.fetch(this.messageId);
         }
         catch {
             return null;
@@ -35,9 +35,9 @@ class DiscordPath extends Model {
             let guild = await this.resolveGuild(client);
             if(!guild) return null;
 
-            return await client.guilds.fetch(this.guildId);
+            return await guild.channels.cache.get(this.channelId);
         }
-        catch {
+        catch(err) {
             return null;
         }
     }
@@ -52,7 +52,7 @@ class DiscordPath extends Model {
         try {
             return await client.guilds.fetch(this.guildId);
         }
-        catch {
+        catch(err) {
             return null;
         }
     }
@@ -113,7 +113,13 @@ class DiscordPath extends Model {
                 allowNull: false
             }
         }, {
-            sequelize
+            sequelize,
+            indexes: [
+                {
+                    unique: true,
+                    fields: ["messageId", "channelId", "guildId"]
+                }
+            ]
         });
     }
 }
