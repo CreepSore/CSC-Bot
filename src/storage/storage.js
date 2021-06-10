@@ -10,6 +10,11 @@ let FadingMessage = require("./model/FadingMessage");
 let AdditionalMessageData = require("./model/AdditionalMessageData");
 let DiscordPath = require("./model/DiscordPath");
 
+let Poll = require("./model/polls/Poll");
+let PollAnswer = require("./model/polls/PollAnswer");
+let PollReaction = require("./model/polls/PollReaction");
+let PollReactionUsers = require("./model/polls/PollReactionUser");
+
 exports.initialize = async function() {
     let sequelize = new Sequelize({
         dialect: "sqlite",
@@ -21,5 +26,23 @@ exports.initialize = async function() {
     FadingMessage.initialize(sequelize);
     AdditionalMessageData.initialize(sequelize);
 
+    // Polls
+    Poll.initialize(sequelize);
+    PollAnswer.initialize(sequelize);
+    PollReaction.initialize(sequelize);
+    PollReactionUsers.initialize(sequelize);
+
+    Poll.hasMany(PollAnswer);
+    PollAnswer.belongsTo(Poll);
+
+    PollAnswer.hasOne(PollReaction);
+    PollReaction.belongsTo(PollAnswer);
+
+    PollReaction.hasMany(PollReactionUsers);
+    PollReactionUsers.belongsTo(PollReaction);
+
     await sequelize.sync();
+
+
+    await Poll.newPoll("Hello World?", ["Yes", "No"]);
 };
