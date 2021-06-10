@@ -93,7 +93,7 @@ class DiscordPath extends Model {
         return this.getFromPath(message.id, message.channel.id, message.guild.id, create);
     }
 
-    static initialize() {
+    static initialize(sequelize) {
         this.init({
             id: {
                 type: DataTypes.STRING(36),
