@@ -4,10 +4,11 @@ let path = require("path");
 
 // Dependencies
 let {Sequelize} = require("sequelize");
-const AdditionalMessageData = require("./model/AdditionalMessageData");
 
 // Models
 let FadingMessage = require("./model/FadingMessage");
+let AdditionalMessageData = require("./model/AdditionalMessageData");
+let DiscordPath = require("./model/DiscordPath");
 
 exports.initialize = async function() {
     let sequelize = new Sequelize({
@@ -16,6 +17,7 @@ exports.initialize = async function() {
         logging: false
     });
 
+    DiscordPath.initialize(sequelize);
     FadingMessage.initialize(sequelize);
     AdditionalMessageData.initialize(sequelize);
 
