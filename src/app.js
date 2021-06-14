@@ -23,9 +23,6 @@ let storage = require("./storage/storage");
 let ban = require("./commands/modcommands/ban");
 let poll = require("./commands/poll");
 
-let Poll = require("./storage/model/polls/Poll");
-let DiscordPath = require("./storage/model/DiscordPath");
-
 let version = conf.getVersion();
 let appname = conf.getName();
 let devname = conf.getAuthor();
@@ -65,20 +62,11 @@ client.on("ready", async() => {
 
         cron.schedule("1 0 * * *", () => bday.checkBdays());
         bday.checkBdays();
-
-        let newPollData = await Poll.newPoll("Hello World?", ["Yes", "No"], "214011372583780352", {
-            isDelayed: true,
-            isAnonymous: false,
-            isExtendable: false,
-            endDate: new Date(new Date().valueOf() + 1000)
-        });
-        await newPollData.poll.showPoll(client, await DiscordPath.getFromPath(null, "852109645962674186", "530565008166223873"));
     }
 
     ban.loadBans();
     ban.startCron(client);
 
-    await poll.importPolls();
     poll.startCron(client);
 
     fadingMessageHandler.startLoop(client);

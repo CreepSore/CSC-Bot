@@ -8,8 +8,12 @@
 let moment = require("moment");
 let parseOptions = require("minimist");
 let cron = require("node-cron");
-const AdditionalMessageData = require("../storage/model/AdditionalMessageData");
-const logger = require("../utils/logger");
+let AdditionalMessageData = require("../storage/model/AdditionalMessageData");
+let logger = require("../utils/logger");
+let Poll = require("../storage/model/polls/Poll");
+let { isDeepStrictEqual } = require("util");
+let DiscordPath = require("../storage/model/DiscordPath");
+const PollSettings = require("../storage/model/polls/PollSettings");
 
 // Utils
 let config = require("../utils/configHandler").getConfig();
@@ -93,10 +97,6 @@ exports.run = (client, message, args, callback) => {
     else if (pollOptions.length < 2) return callback("Bruder du musst schon mehr als eine Antwortmöglichkeit geben 🙄");
     else if (pollOptions.length > 10) return callback("Bitte gib nicht mehr als 10 Antwortmöglichkeiten an!");
 
-
-    let optionstext = "";
-    pollOptions.forEach((e, i) => (optionstext += `${NUMBERS[i]} - ${e}\n`));
-
     let finishTime = new Date(new Date().valueOf() + (delayTime * 60 * 1000));
     if(options.delayed) {
         if(isNaN(delayTime) || delayTime <= 0) {
@@ -105,45 +105,12 @@ exports.run = (client, message, args, callback) => {
         else if(delayTime > 60 * 1000 * 24 * 7) {
             return callback("Bruder du kannst maximal 7 Tage auf ein Ergebnis warten 🙄");
         }
-        // Haha oida ist das cancer
-        optionstext += `\nAbstimmen möglich bis ${new Date(finishTime.valueOf() + 60000).toLocaleTimeString("de").split(":").splice(0, 2).join(":")}`;
     }
 
-    let embed = {
-        embed: {
-            title: pollArray[0],
-            description: optionstext,
-            timestamp: moment.utc().format(),
-            author: {
-                name: `${options.straw ? "Strawpoll" : "Umfrage"} von ${message.author.username}`,
-                icon_url: message.author.displayAvatarURL()
-            }
-        }
-    };
-
-    let footer = [];
     let extendable = options.extendable && pollOptions.length < 10;
 
-    if (extendable) {
-        if(options.delayed) {
-            return callback("Bruder du kannst -e nicht mit -d kombinieren. 🙄");
-        }
-
-        footer.push("Erweiterbar mit .extend als Reply");
-        embed.embed.color = "GREEN";
-    }
-
-    if(options.delayed) {
-        footer.push("⏳");
-        embed.embed.color = "#a10083";
-    }
-
-    if (!options.straw) footer.push("Mehrfachauswahl");
-
-    if (footer.length) {
-        embed.embed.footer = {
-            text: footer.join(" • ")
-        };
+    if (extendable && options.delayed) {
+        return callback("Bruder du kannst -e nicht mit -d kombinieren. 🙄");
     }
 
     let voteChannel = client.guilds.cache.get(config.ids.guild_id).channels.cache.get(config.ids.votes_channel_id);
@@ -152,54 +119,17 @@ exports.run = (client, message, args, callback) => {
         return callback("Du kannst keine verzögerte Abstimmung außerhalb des Umfragenchannels machen!");
     }
 
-    /** @type {import("discord.js").TextChannel} */
-    (channel).send(/** @type {Object} embed */(embed))
-        .then(async msg => {
-            message.delete();
-            for (let i in pollOptions) await msg.react(EMOJI[i]);
-
-            if(options.delayed) {
-                const reactionMap = [];
-                /** @type {string[][]} */
-                const reactions = [];
-                pollOptions.forEach((option, index) => {
-                    reactionMap[index] = option;
-                    reactions[index] = [];
-                });
-
-                let delayedPollData = {
-                    pollId: msg.id,
-                    createdAt: new Date().valueOf(),
-                    finishesAt: finishTime.valueOf(),
-                    reactions,
-                    reactionMap
-                };
-
-                let additionalData = await AdditionalMessageData.fromMessage(msg);
-                let newCustomData = additionalData.customData;
-                newCustomData.delayedPollData = delayedPollData;
-                additionalData.customData = newCustomData;
-                await additionalData.save();
-
-                exports.delayedPolls.push(delayedPollData);
-            }
-        });
+    Poll.newPoll(pollArray[0], pollOptions, message.author.id, {
+        endDate: finishTime,
+        isAnonymous: false, // TODO: implement
+        isStrawpoll: Boolean(options.straw),
+        isDelayed: options.delayed > 0,
+        isExtendable: !options.delayed ? extendable : false
+    }).then(async constructedPoll =>  {
+        constructedPoll.poll.showPoll(client, await DiscordPath.getFromPath(null, channel.id, message.guild.id));
+    });
 
     return callback();
-};
-
-exports.importPolls = async() => {
-    let additionalDatas = await AdditionalMessageData.findAll();
-    let count = 0;
-    additionalDatas.forEach(additionalData => {
-        if(!additionalData.customData.delayedPollData) {
-            return;
-        }
-
-        exports.delayedPolls.push(additionalData.customData.delayedPollData);
-        count++;
-    });
-    logger.info(`Loaded ${count} polls from database`);
 };
 
 /**
@@ -209,7 +139,12 @@ exports.importPolls = async() => {
 exports.startCron = (client) => {
     cron.schedule("* * * * *", async() => {
         const currentDate = new Date();
-        const pollsToFinish = exports.delayedPolls.filter(delayedPoll => currentDate >= delayedPoll.finishesAt);
+        const pollsToFinish = Poll.findAll({
+            include: [{
+                model: PollSettings,
+                where: {isFinished: false}
+            }]
+        });
         /** @type {import("discord.js").TextChannel} */
         const channel = client.guilds.cache.get(config.ids.guild_id).channels.cache.get(config.ids.votes_channel_id);
 
@@ -246,12 +181,6 @@ ${x.map(uid => users[uid]).join("\n")}\n\n`).join("")}
             await Promise.all(message.reactions.cache.map(reaction => reaction.remove()));
             await message.react("✅");
             exports.delayedPolls.splice(exports.delayedPolls.indexOf(delayedPoll), 1);
-
-            let messageData = await AdditionalMessageData.fromMessage(message);
-            let {customData} = messageData;
-            delete customData.delayedPollData;
-            messageData.customData = customData;
-            await messageData.save();
         }
     });
 };

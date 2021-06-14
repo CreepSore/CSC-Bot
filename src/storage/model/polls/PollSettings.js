@@ -37,16 +37,14 @@ class PollSettings extends Model {
                 type: DataTypes.DATE,
                 allowNull: true
             },
+            isFinished: {
+                type: DataTypes.BOOLEAN,
+                defaultValue: false
+            },
             isStarted: {
                 type: DataTypes.VIRTUAL,
                 get() {
                     return this.get("delayBeginTime") !== null;
-                }
-            },
-            isFinished: {
-                type: DataTypes.VIRTUAL,
-                get() {
-                    return this.isStarted && this.get("delayEndTime") !== null;
                 }
             }
         }, {
